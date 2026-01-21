@@ -15,13 +15,13 @@ A real-time 3D cube rendering engine that displays a textured cube with interact
 
 ### Requirements
 - Windows operating system
-- C++ compiler with C++11 support
+- C++ compiler with C++14 support
 - Required headers: `<bits/stdc++.h>`, `<windows.h>`, `<conio.h>`, `<sys/time.h>`
 
 ### Installation & Compilation
 ```bash
 # Compile with g++
-g++ -o CubeRenderer.exe CubeRenderer.cpp -std=c++11
+g++ -o CubeRenderer.exe CubeRenderer.cpp -std=c++14
 ```
 
 ### File Structure
