@@ -26,7 +26,7 @@ g++ -o CubeRenderer.exe CubeRenderer.cpp -std=c++11
 
 ### File Structure
 ```
-Project/
+3Dcube/
 ├── CubeRenderer.cpp    # Main program file
 ├── texture/           # Texture directory
 │   ├── grass1.txt    # Grass texture (front face)
@@ -99,7 +99,7 @@ g++ -o VoxelWorld.exe VoxelWorld.cpp -std=c++11
 
 ### File Structure
 ```
-Project/
+3Dcube/
 ├── VoxelWorld.cpp     # Main program file
 ├── texture/           # Texture packs
 │   ├── grass1.txt    # Grass block textures
