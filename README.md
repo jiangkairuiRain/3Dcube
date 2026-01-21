@@ -87,14 +87,14 @@ A first-person voxel rendering engine inspired by Minecraft. Allows users to exp
 
 ### Requirements
 - Windows operating system
-- C++ compiler with C++11 support
+- C++ compiler with C++14 support
 - Terminal with ANSI color support (for color mode)
 - Required directories: `./texture`, `./saves`, `./images`
 
 ### Installation & Compilation
 ```bash
 # Compile with g++
-g++ -o VoxelWorld.exe VoxelWorld.cpp -std=c++11
+g++ -o VoxelWorld.exe VoxelWorld.cpp -std=c++14
 ```
 
 ### File Structure
@@ -234,4 +234,4 @@ For issues or questions, please check:
 2. Verify texture files are in correct format
 3. Check terminal compatibility for color mode
 
-Enjoy exploring the voxel worlds!
+Enjoy exploring your voxel worlds!
