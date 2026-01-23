@@ -916,6 +916,7 @@ signed main() {
                                     if(fp!=NULL) {
                                         char* line=new char[2001];
                                         int line_number=1;
+                                        string s_out=""; 
                                         while(true) {
                                             if(fgets(line,2000,fp)==NULL) {
                                                 if(feof(fp)) break;   
@@ -924,10 +925,11 @@ signed main() {
                                                     break;
                                                 }
                                             }   
-                                            printf("%s",line);
+                                            s_out+=line;
                                             line_number++;
                                         }
                                         delete[] line;
+                                        cout << s_out;
                                         fclose(fp);
                                     }
                                 }
