@@ -96,7 +96,6 @@ A real-time, interactive console-based voxel ray-tracing engine with advanced re
 - Windows operating system (10 or later) with console support for ANSI escape sequences
 - C++ compiler with C++17 support (e.g., GCC/MinGW)
 - Required headers: `<bits/stdc++.h>`, `<windows.h>`, `<conio.h>`, `<sys/time.h>`, `<dirent.h>`, `<sys/stat.h>`
-- Optional: OpenCL SDK for GPU acceleration (compile with `-DUSE_OPENCL`)
 
 ### Installation & Compilation
 ```bash
@@ -148,12 +147,10 @@ g++ -static -std=c++17 -O3 -DUSE_OPENCL -o VoxelWorld.exe VoxelWorld.cpp -lOpenC
   - `Y` – toggle between standard and spherical projection
   - `U` – toggle mouse capture/release
   - `-` / `=` – decrease/increase resolution (affects both modes)
-  - `[` / `]` – decrease/increase render distance
+  - `[` / `]` – increase/decrease render range
   - `C` – capture screenshot (`.txt` + `.bmp` in color mode)
   - `K` – save current world to `./saves`
   - `J` – open load menu (browse saves with `W`/`S`, `Enter` to load)
-  - `` ` `` (backtick) – export world data (all LOD layers) to `2_pow_world.txt`
-  - `ESC` – exit program
 
 ### Render Modes
 - **Character Mode** (`H` to toggle) – displays blocks using directional symbols (`?BFRLDU`). Resolution can be adjusted with `-`/`=`. Suitable for low‑performance terminals.
@@ -167,11 +164,10 @@ g++ -static -std=c++17 -O3 -DUSE_OPENCL -o VoxelWorld.exe VoxelWorld.cpp -lOpenC
 - **Saving** (`K`): Saves all placed blocks, their types, and rotation states to a timestamped file in `./saves`. The world is also automatically backed up before loading another save.
 - **Loading** (`J`): Displays a list of available save files. Navigate with `W`/`S`; press `Enter` to load. A preview thumbnail (character‑mode screenshot) is shown if available.
 - **Screenshots** (`C`): Saves the current frame as a text file (`.txt`) in `./images`. In color mode, additionally saves a 24‑bit BMP image (vertically stretched for better viewing).
-- **World Export** (`` ` ``): Dumps all LOD data into a plain text file for debugging.
 
 ### Configuration
 - **Resolution**  adjustable for both character and color modes via -/= keys. Presets range from 64×18 up to 1024×288 (and higher if enabled). Lower resolution increases performance.
-- **Render Distance** (`view_r`): Adjustable from 0.01 to 16.0 using `[`/`]`. Higher values increase visibility but reduce performance.
+- **Render Range** (`view_r`): Adjustable from 0.01 to 16.0 using `[`/`]`.
 - **Hotbar**: Customize the 1‑9 block shortcuts via the `Tab` menu.
 
 ### Performance Notes
@@ -180,12 +176,11 @@ g++ -static -std=c++17 -O3 -DUSE_OPENCL -o VoxelWorld.exe VoxelWorld.cpp -lOpenC
 - **Resolution** directly impacts pixel count – lower resolution yields higher FPS.
 - **Spherical projection** is slightly more computationally intensive than standard.
 - **LOD acceleration** (Level of Detail, 0–4) speeds up distant voxel queries.
-- **OpenCL acceleration** (if compiled with `-DUSE_OPENCL`) offloads ray‑tracing to the GPU, providing a major performance boost on supported hardware.
 
 ### Troubleshooting
 - **No color output**: Ensure your console supports ANSI escape codes (Windows Terminal or ConEmu recommended). Enable VT processing if needed.
 - **Missing textures**: Verify the `./texture` directory contains `all_world_cube.txt` and the corresponding texture files for each block type.
-- **Low FPS**: Reduce resolution or render distance; consider using character mode or enabling OpenCL.
+- **Low FPS**: Reduce resolution or render distance; consider using character mode.
 - **Save/load errors**: Ensure the `./saves` and `./images` directories exist (they are created automatically on first use) and that the program has write permissions.
 - **Mouse not working**: Press `U` to toggle mouse capture; the mouse cursor will be hidden and locked to the console window.
 
@@ -202,7 +197,6 @@ g++ -static -std=c++17 -O3 -DUSE_OPENCL -o VoxelWorld.exe VoxelWorld.cpp -lOpenC
 - Ray‑tracing engine with custom vector math and geometric intersection routines.
 - Real‑time interactive voxel world with dual rendering (ASCII & color).
 - Special geometry and mirror reflections.
-- OpenCL support for GPU acceleration.
 
 ---
 
