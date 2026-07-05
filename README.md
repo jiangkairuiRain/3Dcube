@@ -102,9 +102,6 @@ A real-time, interactive console-based voxel ray-tracing engine with advanced re
 # Compile with g++ (CPU only)
 g++ -static -std=c++17 -O3 -o VoxelWorld.exe VoxelWorld.cpp
 
-# Compile with OpenCL support (GPU acceleration)
-g++ -static -std=c++17 -O3 -DUSE_OPENCL -o VoxelWorld.exe VoxelWorld.cpp -lOpenCL
-```
 
 ### File Structure
 ```
