@@ -91,6 +91,14 @@ private:
     int ttmmpp[20][20];
     
     vector<double>recent_FPS;
+	
+	string ansi_buffer;          
+	struct Color { int r, g, b; };
+	
+	Color intToColor(int val) {
+		return { (val >> 16) & 255, (val >> 8) & 255, val & 255 };
+	}
+	
     node cross(const node& a,const node& b) {
         return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};
     }
@@ -174,6 +182,13 @@ private:
         long long microseconds=tv.tv_sec*1000000LL+tv.tv_usec;
         return microseconds;
     }
+	
+	void append_color_run(int x, int y, int length, const Color& color) {
+		ansi_buffer += "\x1b[" + to_string(y + 1) + ";" + to_string(x + 1) + "H";
+		ansi_buffer += "\x1b[48;2;" + to_string(color.r) + ";" + to_string(color.g) + ";" + to_string(color.b) + "m";
+		ansi_buffer.append(length, ' ');
+		ansi_buffer += "\x1b[0m";
+	}
 public:
     CubeRenderer() {
         scr.resize(screen_hw+1,vector<int>(screen_hw+1,0));
@@ -431,68 +446,52 @@ public:
         }
     }
     
-    void PrintColor(int x,int y,int color_val) {
-        int rr=(color_val>>16)&255;
-        int gg=(color_val>>8)&255;
-        int bb=color_val&255;
-        
-        gotoxy(x,y);
-        printf("\x1b[48;2;%d;%d;%dm",(signed)rr,(signed)gg,(signed)bb);
-        printf(" ");
-        printf("\x1b[0m");
-    }
-    
-    void PrintColoredSequence(int start_x,int y,int length,int color_val) {
-        int rr=(color_val>>16)&255;
-        int gg=(color_val>>8)&255;
-        int bb=color_val&255;
-        
-        gotoxy(start_x,y);
-        printf("\x1b[48;2;%d;%d;%dm",(signed)rr,(signed)gg,(signed)bb);
-        
-        for(int i=0;i<length;i++) {
-            printf(" ");
-        }
-        
-        printf("\x1b[0m");
-    }
-    
-    void SlowRender() {
-        for(int j=0;j<=screen_hw;j++) {
-            for(int i=0;i<=screen_hw;i++) {
-                if(scr[i][j]==1) PrintColor(i,j,0xFFFFFF);
-                else PrintColor(i,j,0x000000);
-            }
-        }
-    }
     
     void OptimizedRender() {
-        for(int y=0;y<=screen_hw;y++) {
-            int current_color=-1;
-            int run_start=0;
-            int run_length=0;
-            
-            for(int x=0;x<=screen_hw;x++) {
-                int color_val=scr[x][y];
-                
-                if(color_val==current_color) {
-                    run_length++;
-                } else {
-                    if(current_color!=-1) {
-                        PrintColoredSequence(run_start,y,run_length,current_color);
-                    }
-                    
-                    current_color=color_val;
-                    run_start=x;
-                    run_length=1;
-                }
-            }
-            
-            if(current_color!=-1) {
-                PrintColoredSequence(run_start,y,run_length,current_color);
-            }
-        }
-    }
+		ansi_buffer.clear();
+		ansi_buffer.reserve((screen_hw + 1) * (screen_hw + 1) * 30); // 预估大小
+		
+		// 扫描每一行，进行运行长度编码
+		for (int y = 0; y <= screen_hw; ++y) {
+			int current_color = -1;
+			int run_start = 0;
+			int run_length = 0;
+			for (int x = 0; x <= screen_hw; ++x) {
+				int color_val = scr[x][y];
+				if (color_val == current_color) {
+					run_length++;
+				} else {
+					if (current_color != -1) {
+						append_color_run(run_start, y, run_length, intToColor(current_color));
+					}
+					current_color = color_val;
+					run_start = x;
+					run_length = 1;
+				}
+			}
+			if (current_color != -1) {
+				append_color_run(run_start, y, run_length, intToColor(current_color));
+			}
+		}
+		
+		// 移动光标到左上角，输出状态行（覆盖画面顶部）
+		ansi_buffer += "\x1b[0m";
+		ansi_buffer += "\x1b[1;1H";
+		ansi_buffer += "\x1b[48;2;0;0;0m\x1b[38;2;255;255;255m";
+		
+		string status = "角度(Y/P/R): " + to_string(y) + "/" + to_string(p) + "/" + to_string(r);
+		status += "  控制: Q/E(Y)  A/D(P)  W/S(R)  ESC退出";
+		status += "Screen size: " + to_string(screen_hw) + "*" + to_string(screen_hw) + "  |";
+		status += "FPS:  ";
+		for (int i = max(0, (int)(recent_FPS.size() - 15)); i < (int)recent_FPS.size(); ++i) {
+			status += to_string(recent_FPS[i]) + " ";
+		}
+		ansi_buffer += status;
+		ansi_buffer += "\x1b[0m";
+		
+		// 一次性输出
+		cout << ansi_buffer;
+	}
     
     void CharRender() {
         system("cls");

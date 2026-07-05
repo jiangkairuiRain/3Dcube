@@ -1,0 +1,16 @@
+14
+
+grass 0
+stone 0
+test 0
+mirror 0
+temp 0
+xyz 1
+round 1
+stair 1
+florr 1
+slab 1
+_red 0
+_green 0
+_blue 0
+part 1

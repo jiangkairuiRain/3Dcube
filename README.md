@@ -70,158 +70,152 @@ Textures should be 16×16 grids of integer RGB values in decimal format:
 
 ---
 
-## Program 2: Voxel World (Minecraft-style Renderer)
+## Program 2: Voxel World (Ray-Traced Voxel Renderer)
 
 ### Overview
-A first-person voxel rendering engine inspired by Minecraft. Allows users to explore a 3D world, place and destroy blocks, with support for multiple rendering modes and texture packs.
+A real-time, interactive console-based voxel ray-tracing engine with advanced rendering features. The program simulates a dynamic 3D voxel world with full camera control, block editing, mirror reflections, custom geometry (triangles, spheres, curved patches), and multiple display modes. It supports both character‑based ASCII rendering and true‑color ANSI output, and includes world saving/loading, screenshot capture, and a rich set of interaction controls.
 
 ### Features
-- First-person voxel world exploration
-- Multiple block types: grass, stone, test blocks
-- Two rendering modes: character-based and colored
-- Two projection modes: standard and spherical (fisheye effect)
-- Block placement/destruction system
-- World saving/loading functionality
-- Screenshot capture capability
-- Adjustable render distance and resolution
+- **Ray‑tracing core** – recursive ray marching with support for:
+  - Ordinary voxel blocks (textured cubes with 6 faces)
+  - Mirror blocks with planar reflection
+  - Special geometry: triangle meshes, mirror spheres, textured spherical patches (bilinear surfaces)
+  - Dynamic procedural sky (HSL‑based, time‑varying)
+  - Multiple reflection bounces with attenuation
+- **Rendering modes** – switch between:
+  - **Character mode** – ASCII symbols representing faces and materials
+  - **True‑color mode** – 24‑bit ANSI pixels with differential updates (only changed pixels redrawn)
+- **Projection modes** – toggle between standard perspective and spherical (fisheye) projection
+- **World editing** – place/delete blocks, rotate block orientation (48 possible transformations), place/delete along reflected directions
+- **World management** – save/load entire worlds to/from `./saves`, auto‑backup on load
+- **Screenshot** – capture both character‑mode text and BMP image (with vertical stretch) to `./images`
+- **Performance** – adjustable render distance, resolution, and LOD acceleration
+- **Mouse support** – drag to look, left‑click to delete, right‑click to place (toggleable capture)
 
 ### Requirements
-- Windows operating system
-- C++ compiler with C++14 support
-- Terminal with ANSI color support (for color mode)
-- Required directories: `./texture`, `./saves`, `./images`
+- Windows operating system (10 or later) with console support for ANSI escape sequences
+- C++ compiler with C++17 support (e.g., GCC/MinGW)
+- Required headers: `<bits/stdc++.h>`, `<windows.h>`, `<conio.h>`, `<sys/time.h>`, `<dirent.h>`, `<sys/stat.h>`
+- Optional: OpenCL SDK for GPU acceleration (compile with `-DUSE_OPENCL`)
 
 ### Installation & Compilation
 ```bash
-# Compile with g++
-g++ -o VoxelWorld.exe VoxelWorld.cpp -std=c++14
+# Compile with g++ (CPU only)
+g++ -static -std=c++17 -O3 -o VoxelWorld.exe VoxelWorld.cpp
+
+# Compile with OpenCL support (GPU acceleration)
+g++ -static -std=c++17 -O3 -DUSE_OPENCL -o VoxelWorld.exe VoxelWorld.cpp -lOpenCL
 ```
 
 ### File Structure
 ```
 3Dcube/
-├── VoxelWorld.cpp     # Main program file
-├── texture/           # Texture packs
-│   ├── grass1.txt    # Grass block textures
-│   ├── stone1.txt    # Stone block textures
-│   └── ...
-├── saves/             # World save files
-├── images/            # Screenshot saves
-└── README.md          # This documentation
+├── VoxelWorld.cpp               # Main program
+├── texture/                     # Texture definitions
+│   ├── all_world_cube.txt       # Index of all block types (including special ones)
+│   ├── grass.txt                # 6×16×16 RGB texture for grass block
+│   ├── stone.txt                # Texture for stone block
+│   ├── mirror.txt               # Mirror block
+│   └── ...                      # Other block textures (special geometry files)
+├── saves/                       # World save files (created automatically)
+├── images/                      # Screenshots (character .txt and .bmp)
+└── README.md                    # This documentation
 ```
 
 ### How to Use
 
 #### Basic Controls
-1. **Movement**:
-   - `W/S` - Move forward/backward
-   - `A/D` - Strafe left/right
-   - `P/L` - Move up/down (vertical movement)
-   - `T/G` - Move along horizontal plane (independent of pitch)
-
-2. **Camera Control**:
-   - `Q/E` - Look left/right (yaw)
-   - `R/F` - Look up/down (pitch)
-
-3. **Block Interaction**:
-   - `B` - Place block in front of player
-   - `V` - Destroy block in front of player
-   - `1-9` - Select block type (check idcube array for available types)
-
-4. **System Controls**:
-   - `H` - Toggle between character and color rendering modes
-   - `Y` - Toggle between standard and spherical projection
-   - `-`/`=` - Decrease/Increase resolution (character mode only)
-   - `[`/`]` - Decrease/Increase render distance (r value)
-   - `C` - Take screenshot (saves to images folder)
-   - `K` - Save world state (saves to saves folder)
-   - `J` - Load world from save file
-   - `ESC` - Exit program
+- **Movement**:
+  - `W` / `S` – move forward/backward (along viewing direction)
+  - `A` / `D` – strafe left/right
+  - `P` / `L` – move up/down (vertical)
+  - `T` / `G` – move forward/backward *horizontally* (ignoring pitch)
+- **Camera**:
+  - `Q` / `E` – rotate left/right (yaw)
+  - `R` / `F` – look up/down (pitch)
+  - Mouse drag (when captured) – free look
+- **Block Interaction**:
+  - `B` – place selected block in front of the player
+  - `V` – delete the block the player is looking at
+  - `X` – place block along the reflection direction (for mirror placement)
+  - `Z` – delete block along the reflection direction
+  - `N` / `M` – rotate the gazed block’s orientation / spin (48 possible orientations)
+- **Block Selection**:
+  - `1`–`9` – select a block from the hotbar (assigned via `Tab` menu)
+  - `Tab` – open hotbar mapping menu: navigate with `W`/`S`, assign a block to a number key
+- **System**:
+  - `H` – toggle between character and color rendering modes
+  - `Y` – toggle between standard and spherical projection
+  - `U` – toggle mouse capture/release
+  - `-` / `=` – decrease/increase resolution (affects both modes)
+  - `[` / `]` – decrease/increase render distance
+  - `C` – capture screenshot (`.txt` + `.bmp` in color mode)
+  - `K` – save current world to `./saves`
+  - `J` – open load menu (browse saves with `W`/`S`, `Enter` to load)
+  - `` ` `` (backtick) – export world data (all LOD layers) to `2_pow_world.txt`
+  - `ESC` – exit program
 
 ### Render Modes
-
-#### Character Mode
-- Uses ASCII characters to represent blocks
-- Higher resolution options available
-- Better performance on all terminals
-
-#### Color Mode
-- Uses 24-bit true color via ANSI escape codes
-- Smooth texture rendering
-- Requires terminal with color support
+- **Character Mode** (`H` to toggle) – displays blocks using directional symbols (`?BFRLDU`). Resolution can be adjusted with `-`/`=`. Suitable for low‑performance terminals.
+- **Color Mode** – uses 24‑bit ANSI escape sequences for full‑color display. Optimized with differential updates – only changed pixels are redrawn, reducing flicker and increasing performance. Resolution is also adjustable.
 
 ### Projection Modes
-
-#### Standard Projection
-- Traditional 3D perspective
-- Straight lines remain straight
-
-#### Spherical Projection
-- Fisheye-like spherical projection
-- Creates wide-angle view effect
-- Toggle with `Y` key
+- **Standard** – ordinary perspective projection (straight lines remain straight).
+- **Spherical** – fisheye‑like projection, creating a wide‑angle view effect. Toggle with `Y`.
 
 ### World Management
-
-#### Saving Worlds
-- Press `K` to save current world
-- Saves include:
-  - All placed blocks and their positions
-  - Block types and orientations
-  - Timestamp-based filename
-
-#### Loading Worlds
-1. Press `J` to open load menu
-2. Navigate with `W`/`S` keys
-3. Press `Enter` to load selected world
-4. Current world is automatically backed up if modified
-
-#### Screenshots
-- Press `C` to capture screenshot
-- Saves ASCII representation to images folder
-- Timestamp-based filenames
+- **Saving** (`K`): Saves all placed blocks, their types, and rotation states to a timestamped file in `./saves`. The world is also automatically backed up before loading another save.
+- **Loading** (`J`): Displays a list of available save files. Navigate with `W`/`S`; press `Enter` to load. A preview thumbnail (character‑mode screenshot) is shown if available.
+- **Screenshots** (`C`): Saves the current frame as a text file (`.txt`) in `./images`. In color mode, additionally saves a 24‑bit BMP image (vertically stretched for better viewing).
+- **World Export** (`` ` ``): Dumps all LOD data into a plain text file for debugging.
 
 ### Configuration
-
-#### Resolution Settings (Character Mode Only)
-- Resolution presets:
-  - 64×18, 128×36, 192×54, 384×108, 512×144, 1024×288
-- Higher resolution = more detail, lower performance
-
-#### Render Distance (r value)
-- Adjustable from 0.1 to 16.0
-- Higher values = further visibility
-- Affects performance significantly
+- **Resolution**  adjustable for both character and color modes via -/= keys. Presets range from 64×18 up to 1024×288 (and higher if enabled). Lower resolution increases performance.
+- **Render Distance** (`view_r`): Adjustable from 0.01 to 16.0 using `[`/`]`. Higher values increase visibility but reduce performance.
+- **Hotbar**: Customize the 1‑9 block shortcuts via the `Tab` menu.
 
 ### Performance Notes
-- **Color Mode**: Uses optimized rendering that only updates changed pixels
-- **Render Distance**: Higher values increase calculation time exponentially
-- **Resolution**: Character mode resolution affects ASCII detail; color mode uses fixed 192×54
-- **Spherical Projection**: May be more computationally intensive
+- **Color mode** uses differential updates – only changed pixels are sent to the console, significantly improving frame rate.
+- **Render distance** affects ray‑marching steps – reducing it improves performance.
+- **Resolution** directly impacts pixel count – lower resolution yields higher FPS.
+- **Spherical projection** is slightly more computationally intensive than standard.
+- **LOD acceleration** (Level of Detail, 0–4) speeds up distant voxel queries.
+- **OpenCL acceleration** (if compiled with `-DUSE_OPENCL`) offloads ray‑tracing to the GPU, providing a major performance boost on supported hardware.
 
 ### Troubleshooting
-
-#### Common Issues
-1. **No color display**: Ensure terminal supports ANSI escape codes
-2. **Missing textures**: Verify texture files exist in correct format
-3. **Low FPS**: Reduce resolution or render distance
-4. **Save/load errors**: Check directory permissions
-
-#### Texture Requirements
-- Must be 16×16 grids of RGB values
-- Six files per texture pack (one per cube face)
-- Naming convention: `[texture_name][1-6].txt`
+- **No color output**: Ensure your console supports ANSI escape codes (Windows Terminal or ConEmu recommended). Enable VT processing if needed.
+- **Missing textures**: Verify the `./texture` directory contains `all_world_cube.txt` and the corresponding texture files for each block type.
+- **Low FPS**: Reduce resolution or render distance; consider using character mode or enabling OpenCL.
+- **Save/load errors**: Ensure the `./saves` and `./images` directories exist (they are created automatically on first use) and that the program has write permissions.
+- **Mouse not working**: Press `U` to toggle mouse capture; the mouse cursor will be hidden and locked to the console window.
 
 ### Development Notes
-- Uses ray marching algorithm for voxel rendering
-- Implements custom 3D vector math library
-- Optimized for real-time performance
-- Supports modular texture system
+- Implements a full ray‑tracing pipeline with recursive reflections.
+- Uses DDA‑based voxel traversal for fast AABB stepping.
+- Supports special geometry (triangles, spheres, bilinear patches) via Möller–Trumbore and custom solving routines.
+- 48 orthogonal rotation transformations per block (6 faces × 8 stabilizers) with correct texture mapping.
+- LOD system (0–4) for efficient distant world representation.
+- All textures are 16×16 RGB grids.
+- The world is procedurally generated on startup with a Perlin‑noise based terrain (grass and stone).
 
 ### Credits
-- 3D rendering engine with custom mathematics
-- Real-time interactive voxel world
-- Dual rendering system for compatibility
+- Ray‑tracing engine with custom vector math and geometric intersection routines.
+- Real‑time interactive voxel world with dual rendering (ASCII & color).
+- Special geometry and mirror reflections.
+- OpenCL support for GPU acceleration.
+
+---
+
+## License & Attribution
+These programs are provided for educational and demonstration purposes. They demonstrate 3D rendering techniques, voxel graphics, and real‑time interaction.
+
+## Support
+For issues or questions, please check:
+1. All required directories (`texture/`, `saves/`, `images/`) are present.
+2. Texture files follow the correct format (see `all_world_cube.txt` for indexing).
+3. Your terminal supports ANSI escape sequences (color mode) and is properly sized.
+
+Enjoy exploring your voxel worlds!
 
 ---
 
