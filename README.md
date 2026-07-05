@@ -207,6 +207,8 @@ g++ -static -std=c++17 -O3 -DUSE_OPENCL -o VoxelWorld.exe VoxelWorld.cpp -lOpenC
 ---
 
 ## License & Attribution
+MIT LICENSE
+
 These programs are provided for educational and demonstration purposes. They demonstrate 3D rendering techniques, voxel graphics, and real‑time interaction.
 
 ## Support
@@ -217,15 +219,3 @@ For issues or questions, please check:
 
 Enjoy exploring your voxel worlds!
 
----
-
-## License & Attribution
-These programs are provided for educational and demonstration purposes. They demonstrate 3D rendering techniques and voxel graphics implementation.
-
-## Support
-For issues or questions, please check:
-1. Ensure all required directories exist
-2. Verify texture files are in correct format
-3. Check terminal compatibility for color mode
-
-Enjoy exploring your voxel worlds!
