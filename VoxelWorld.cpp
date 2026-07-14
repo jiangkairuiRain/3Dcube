@@ -381,23 +381,12 @@
 
 
 
-//color内部操作应为 point,输入输出才转化为ll 
-
-
-
-
-//去掉无用的数字ll  ,  .0
-
-
-//-lOpenCL -DUSE_OPENCL
 
 
 #pragma GCC optimize(3,"Ofast","inline")
 #include<bits/stdc++.h>
 
-#ifdef USE_OPENCL
-#include <CL/cl.hpp>
-#endif
+
 
 #include<windows.h>
 #include<conio.h>
@@ -555,10 +544,6 @@ struct hit_cube{
 	
 	node p={0,0,0};
 };
-//struct cube_state{
-//	ll cube;
-//	ll rot_state;
-//};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////（半）常量 
 
@@ -675,6 +660,7 @@ ll key_ch;
 //视角与位置变量 
 double view_r=1;
 node position={-1,0,0},eye_dir,eye_act,screen_x_dir,screen_y_dir,eye_xydir;
+point last_player_chunk={LLONG_MAX,LLONG_MAX,LLONG_MAX};
 double view_a=0,view_b=0;
 
 //信息变量 
@@ -685,10 +671,10 @@ ll info_time=0;
 ll shortcut_key[10]={0,1,2,3,4,5,6,7,8,9}; 
 ll cube_to_shortcut[30]={0,1,2,3,4,5,6,7,8,9};
 
-//世界变量 
+//世界变量
 map<point,ll>cube[10];//cube[0]表示对应位置方块的编号；cube[1~MAX_LOD]表示对应"区块"的方块个数 
 map<point,ll>rot_state;//旋转翻折编号
-
+set<point>loaded_chunks;
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////所有定义的函数 
@@ -720,7 +706,7 @@ void ScrollWindowToCursor();
 bool EnableVirtualTerminal();
 ll getTimeOfDayMicros();
 ll get_nowtime();
-vector<string>getSaveFileNames();
+vector<string>getFileNames(string folder);
 void mouse();
 void keyboard();
 
@@ -759,10 +745,11 @@ void gogogo(node tmp_position,node direction,ll mr_times,ll pixel_idx);
 pair<ll,point>eyegogogo(node direction);
 pair<ll,point>mirror_eyegogogo(node tmp_position,node direction,ll mr_times);
 
-//世界更改函数 
+//世界更改函数
 void add_cube(pair<ll,point>pid,ll put_cube);
 void combo_delete_temp(point cube_num);
 void delete_cube(pair<ll,point>pid);
+void delete_lod(ll lod,point pos);
 
 //快捷键函数
 void display_shortcut(ll pos);
@@ -790,562 +777,11 @@ void displaySaveList(const vector<string>& fileNames,ll pos);
 void init_chunk(ll lod,point pos);
 void loadSave(const string& filename);
 
-//区块储存函数
-//void delete_lod(ll lod,node pos);
-//void load_chunk(node pos);
-//void save_chunk(node pos);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////gpu
-
-
-
-
-
-#ifdef USE_OPENCL
-class GPUAccelerator {
-public:
-    bool available = false;
-    GPUAccelerator();
-    void init();
-    void uploadWorld(
-	    const map<point, long long> (&cube)[10],
-	    const map<point, long long>& rot_state,
-	    const vector<vector<vector<vector<point>>>>& all_cube_color,
-	    const double matrix_T_inv[48][3][3],
-	    const vector<vector<special_cube>>& rot_sp_cube,
-	    const node& position,
-	    long long render_distance);
-    void dispatchRender(
-	    const node& eye_dir, const node& screen_x_dir, const node& screen_y_dir,
-	    const node& eye_act, const node& eye_xydir,
-	    double view_a, double view_b, double view_r,
-	    bool is_round, long long res_x, long long res_y,
-	    long long mirror_times, double mirror_reduction,
-	    std::vector<point>& current_frame);
-private:
-    cl::Context context;
-    cl::CommandQueue queue;
-    cl::Kernel kernel_trace;
-    cl::Device device; 
-    cl::Buffer d_voxelGrid, d_textures, d_matrices;
-    int gridSizeX, gridSizeY, gridSizeZ;
-    node gridOrigin;
-    float voxelScale = 1.0f;
-};
-
-
-
-// -------- 内嵌 OpenCL 内核源码字符串 --------
-static const char* raytraceKernelSource = R"(
-typedef struct {
-    float x, y, z;
-} float3_t;
-
-typedef struct {
-    int x, y, z;
-} int3_t;
-
-float3_t make_float3(float x, float y, float z) {
-    float3_t v; v.x = x; v.y = y; v.z = z; return v;
-}
-
-float dot(float3_t a, float3_t b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
-float3_t cross(float3_t a, float3_t b) {
-    return make_float3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
-}
-float3_t normalize3(float3_t v) {
-    float len = sqrt(dot(v,v));
-    return (len > 1e-7f) ? make_float3(v.x/len, v.y/len, v.z/len) : v;
-}
-
-// 向量运算函数（替代运算符）
-float3_t add3(float3_t a, float3_t b) { return make_float3(a.x+b.x, a.y+b.y, a.z+b.z); }
-float3_t sub3(float3_t a, float3_t b) { return make_float3(a.x-b.x, a.y-b.y, a.z-b.z); }
-float3_t mul3(float3_t a, float s)    { return make_float3(a.x*s, a.y*s, a.z*s); }
-float3_t mul3v(float3_t a, float3_t b){ return make_float3(a.x*b.x, a.y*b.y, a.z*b.z); }  // 逐分量乘
-float3_t div3(float3_t a, float s)    { return make_float3(a.x/s, a.y/s, a.z/s); }
-float3_t neg3(float3_t a)             { return make_float3(-a.x, -a.y, -a.z); }
-
-int sampleVoxel(__global const int* grid,
-                int gsx, int gsy, int gsz,
-                int x, int y, int z) {
-    if (x < 0 || x >= gsx || y < 0 || y >= gsy || z < 0 || z >= gsz)
-        return 0;
-    return grid[z * (gsy * gsx) + y * gsx + x];
-}
-
-unsigned int sampleTexture(__global const unsigned int* textures,
-                           int cubeId, int face, int uu, int vv) {
-    int texOff = ((cubeId * 6) + (face - 1)) * 256 + vv * 16 + uu;
-    return textures[texOff];
-}
-
-float3_t rotateLocal(float3_t p, int rotState, __global const float* matrices) {
-    float3_t c = make_float3(0.5f, 0.5f, 0.5f);
-    float3_t q = sub3(p, c);
-    int matOff = rotState * 9;
-    float3_t r;
-    r.x = matrices[matOff+0]*q.x + matrices[matOff+1]*q.y + matrices[matOff+2]*q.z;
-    r.y = matrices[matOff+3]*q.x + matrices[matOff+4]*q.y + matrices[matOff+5]*q.z;
-    r.z = matrices[matOff+6]*q.x + matrices[matOff+7]*q.y + matrices[matOff+8]*q.z;
-    return add3(r, c);
-}
-
-int findFace(float3_t jd) {
-    if (fabs(jd.x) < 1e-4f) return 1;
-    if (fabs(jd.x - 1.0f) < 1e-4f) return 2;
-    if (fabs(jd.y) < 1e-4f) return 3;
-    if (fabs(jd.y - 1.0f) < 1e-4f) return 4;
-    if (fabs(jd.z) < 1e-4f) return 5;
-    if (fabs(jd.z - 1.0f) < 1e-4f) return 6;
-    return 0;
-}
-int findFaceByNormal(float3_t n, float3_t jd) {
-    float absN[3] = {fabs(n.x), fabs(n.y), fabs(n.z)};
-    int axis = 0;
-    if (absN[1] > absN[0]) axis = 1;
-    if (absN[2] > absN[axis]) axis = 2;
-    int sign = (axis==0) ? (n.x > 0) : ((axis==1) ? (n.y > 0) : (n.z > 0));
-    return axis*2 + (sign ? 1 : 2);
-}
-
-void getTexCoords(float3_t jdLocal, int face, int* uu, int* vv) {
-    float u, v;
-    if (face == 1 || face == 2) {
-        u = jdLocal.y; v = jdLocal.z;
-    } else if (face == 3 || face == 4) {
-        u = jdLocal.x; v = jdLocal.z;
-    } else {
-        u = jdLocal.x; v = jdLocal.y;
-    }
-    *uu = (int)(u * 16.0f); *vv = (int)(v * 16.0f);
-    *uu = clamp(*uu, 0, 15); *vv = clamp(*vv, 0, 15);
-}
-
-unsigned int traceRay(float3_t origin, float3_t dir,
-                      __global const int* grid, int gsx, int gsy, int gsz,
-                      float3_t gridOrigin, float voxScale,
-                      __global const unsigned int* textures,
-                      __global const float* matrices,
-                      int maxSteps, int maxBounce) {
-    // 世界空间光线追踪，体素大小为 1（忽略 voxScale 因为当前始终为1）
-    float3_t pos = origin;
-    float3_t rayDir = dir;
-    float3_t color = make_float3(0.0f, 0.0f, 0.0f);
-    float3_t attenuation = make_float3(1.0f, 1.0f, 1.0f);
-    int bounce = 0;
-
-    while (bounce <= maxBounce) {
-        // 转为相对于 gridOrigin 的坐标（世界单位）
-        float3_t rpos = sub3(pos, gridOrigin);
-        int3_t vox = { (int)floor(rpos.x), (int)floor(rpos.y), (int)floor(rpos.z) };
-
-        // 出界 → 天空
-        if (vox.x < 0 || vox.x >= gsx || vox.y < 0 || vox.y >= gsy || vox.z < 0 || vox.z >= gsz) {
-            float upness = rayDir.z * 0.5f + 0.5f;
-            float3_t skyColor = make_float3(0.5f + 0.5f*upness, 0.6f + 0.3f*upness, 0.8f + 0.2f*upness);
-            color = add3(color, mul3v(attenuation, skyColor));
-            break;
-        }
-
-        // ---------- DDA 初始化（世界空间） ----------
-        float3_t tMax;
-        float3_t step;
-        int3_t stepSign;
-
-        if (rayDir.x > 0) { step.x = 1;  tMax.x = (vox.x + 1 - rpos.x) / rayDir.x; stepSign.x = 1; }
-        else              { step.x = -1; tMax.x = (rpos.x - vox.x)     / -rayDir.x; stepSign.x = -1; }
-        if (rayDir.y > 0) { step.y = 1;  tMax.y = (vox.y + 1 - rpos.y) / rayDir.y; stepSign.y = 1; }
-        else              { step.y = -1; tMax.y = (rpos.y - vox.y)     / -rayDir.y; stepSign.y = -1; }
-        if (rayDir.z > 0) { step.z = 1;  tMax.z = (vox.z + 1 - rpos.z) / rayDir.z; stepSign.z = 1; }
-        else              { step.z = -1; tMax.z = (rpos.z - vox.z)     / -rayDir.z; stepSign.z = -1; }
-
-        bool hit = false;
-        float3_t hitPos, hitNormal;
-        int hitBlock = 0;
-        int steps = 0;
-        float tEnter = 0.0f;
-
-        // DDA 步进
-        while (steps < maxSteps) {
-            // 选择最先击中的轴
-            float tNext = tMax.x;
-            int axis = 0;
-            if (tMax.y < tNext) { tNext = tMax.y; axis = 1; }
-            if (tMax.z < tNext) { tNext = tMax.z; axis = 2; }
-
-            tEnter = tNext;     // 记录进入下一个体素的时间
-            // 步进体素索引
-            if (axis == 0) { vox.x += stepSign.x; tMax.x += 1.0f / fabs(rayDir.x); }
-            else if (axis == 1) { vox.y += stepSign.y; tMax.y += 1.0f / fabs(rayDir.y); }
-            else { vox.z += stepSign.z; tMax.z += 1.0f / fabs(rayDir.z); }
-
-            // 检查是否离开网格
-            if (vox.x < 0 || vox.x >= gsx || vox.y < 0 || vox.y >= gsy || vox.z < 0 || vox.z >= gsz) break;
-
-            // 查找该体素是否有方块
-            int block = sampleVoxel(grid, gsx, gsy, gsz, vox.x, vox.y, vox.z);
-            if (block != 0) {
-                hit = true;
-                hitBlock = block;
-                // 交点 = 射线起点 + 方向 * 进入时间
-                hitPos = add3(origin, mul3(rayDir, tEnter));
-                // 法线（指向射线来的方向）
-                if (axis == 0) hitNormal = make_float3(stepSign.x > 0 ? -1.0f : 1.0f, 0, 0);
-                else if (axis == 1) hitNormal = make_float3(0, stepSign.y > 0 ? -1.0f : 1.0f, 0);
-                else hitNormal = make_float3(0, 0, stepSign.z > 0 ? -1.0f : 1.0f);
-                break;
-            }
-            steps++;
-        }
-
-        if (!hit) {
-            float upness = rayDir.z * 0.5f + 0.5f;
-            float3_t skyColor = make_float3(0.5f + 0.5f*upness, 0.6f + 0.3f*upness, 0.8f + 0.2f*upness);
-            color = add3(color, mul3v(attenuation, skyColor));
-            break;
-        }
-
-        int blockId = hitBlock & 0xFFFF;
-        int rotState = (hitBlock >> 16) & 0xFF;
-
-        // ----- 普通方块纹理采样（暂时关闭镜面） -----
-        // 计算体素最小角点的世界坐标
-        float3_t worldVoxCorner = add3(gridOrigin, make_float3((float)vox.x, (float)vox.y, (float)vox.z));
-        // 局部坐标 [0,1]^3，交点位于表面
-        float3_t localJd = sub3(hitPos, worldVoxCorner);   // 各分量在 0~1 之间
-
-        // 1. 根据未旋转的局部坐标判断面（CPU 做法）
-        int face = 0;
-        if (fabs(localJd.x) < 1e-4f) face = 1;
-        else if (fabs(localJd.x - 1.0f) < 1e-4f) face = 2;
-        else if (fabs(localJd.y) < 1e-4f) face = 3;
-        else if (fabs(localJd.y - 1.0f) < 1e-4f) face = 4;
-        else if (fabs(localJd.z) < 1e-4f) face = 5;
-        else if (fabs(localJd.z - 1.0f) < 1e-4f) face = 6;
-
-        // 如果精度不足，使用法线兜底
-        if (face == 0) {
-            if (fabs(hitNormal.x) > 0.5f) face = (hitNormal.x > 0) ? 2 : 1;
-            else if (fabs(hitNormal.y) > 0.5f) face = (hitNormal.y > 0) ? 4 : 3;
-            else face = (hitNormal.z > 0) ? 6 : 5;
-        }
-
-        // 2. 应用逆旋转，得到纹理坐标对应的局部坐标
-        float3_t texLocal = rotateLocal(localJd, rotState, matrices);
-
-        // 3. 采样纹理（面使用未旋转时判定的面，纹理坐标使用旋转后的）
-        int uu, vv;
-        getTexCoords(texLocal, face, &uu, &vv);
-        unsigned int texCol = sampleTexture(textures, blockId, face, uu, vv);
-        float3_t surfColor = make_float3((float)((texCol>>16)&0xFF)/255.0f,
-                                         (float)((texCol>>8)&0xFF)/255.0f,
-                                         (float)(texCol&0xFF)/255.0f);
-        color = add3(color, mul3v(attenuation, surfColor));
-        break;  // 无反射
-    }
-
-    int r = (int)(color.x * 255.0f);
-    int g = (int)(color.y * 255.0f);
-    int b = (int)(color.z * 255.0f);
-    r = clamp(r, 0, 255); g = clamp(g, 0, 255); b = clamp(b, 0, 255);
-    return (r << 16) | (g << 8) | b;
-}
-
-__kernel void raytrace_kernel(
-    __global unsigned int* output,
-    int width, int height,
-    __global const int* voxelGrid,
-    int gsx, int gsy, int gsz,
-    float gridOriginX, float gridOriginY, float gridOriginZ,
-    float voxScale,
-    __global const unsigned int* textures,
-    __global const float* matrices,
-    float posX, float posY, float posZ,
-    float eyeDirX, float eyeDirY, float eyeDirZ,
-    float screenXDirX, float screenXDirY, float screenXDirZ,
-    float screenYDirX, float screenYDirY, float screenYDirZ,
-    float screenXWid, float screenYWid,
-    int maxSteps, int maxBounce
-) {
-    int x = get_global_id(0);
-    int y = get_global_id(1);
-    if (x >= width || y >= height) return;
-
-    float u = (x / (float)(width - 1)) * 2.0f - 1.0f;
-    float v = (y / (float)(height - 1)) * 2.0f - 1.0f;
-
-    float3_t eyePos = make_float3(posX, posY, posZ);
-    float3_t eyeDir = make_float3(eyeDirX, eyeDirY, eyeDirZ);
-    float3_t scrX = make_float3(screenXDirX, screenXDirY, screenXDirZ);
-    float3_t scrY = make_float3(screenYDirX, screenYDirY, screenYDirZ);
-    
-    float3_t rayDir = add3(eyeDir, add3(mul3(scrX, u * screenXWid), mul3(scrY, v * screenYWid)));
-    rayDir = normalize3(rayDir);
-
-    unsigned int color = traceRay(eyePos, rayDir, voxelGrid, gsx, gsy, gsz,
-                                  make_float3(gridOriginX, gridOriginY, gridOriginZ), voxScale,
-                                  textures, matrices, maxSteps, maxBounce);
-    output[y * width + x] = color;
-}
-)";
-
-
-//static const char* raytraceKernelSource = R"(
-//__kernel void test_kernel(__global uint* output) {
-//    int id = get_global_id(0);
-//    output[id] = id;
-//}
-//)";
-
-// -------- 成员函数实现 --------
-GPUAccelerator::GPUAccelerator(){}
-void GPUAccelerator::init() {
-    available = false;
-
-    // 1. 获取平台
-    std::vector<cl::Platform> platforms;
-    cl_int err = cl::Platform::get(&platforms);
-    if (err != CL_SUCCESS) {
-        add_info("OpenCL: cl::Platform::get failed");
-        return;
-    }
-    if (platforms.empty()) {
-        add_info("OpenCL: No platforms found");
-        return;
-    }
-
-    // 2. 寻找 GPU 设备
-    cl::Platform chosen;
-    bool gpuFound = false;
-    for (auto& p : platforms) {
-        std::vector<cl::Device> devs;
-        err = p.getDevices(CL_DEVICE_TYPE_GPU, &devs);
-        if (err == CL_SUCCESS && !devs.empty()) {
-            chosen = p;
-            device = devs[0];
-            gpuFound = true;
-            break;
-        }
-    }
-    if (!gpuFound) {
-        add_info("OpenCL: No GPU device found");
-        // 可选：尝试 CPU 设备
-        for (auto& p : platforms) {
-            std::vector<cl::Device> devs;
-            err = p.getDevices(CL_DEVICE_TYPE_CPU, &devs);
-            if (err == CL_SUCCESS && !devs.empty()) {
-                device = devs[0];
-                add_info("OpenCL: Using CPU device instead");
-                break;
-            }
-        }
-        if (device() == nullptr) {
-            add_info("OpenCL: No device (GPU or CPU) found");
-            return;
-        }
-    }
-
-    // 3. 创建上下文
-    cl_int ctxErr = 0;
-    context = cl::Context(device, nullptr, nullptr, nullptr, &ctxErr);
-    if (ctxErr != CL_SUCCESS) {
-        add_info("OpenCL: Context creation failed");
-        return;
-    }
-
-    // 4. 创建命令队列
-    cl_int queueErr = 0;
-    queue = cl::CommandQueue(context, device, 0, &queueErr);
-    if (queueErr != CL_SUCCESS) {
-        add_info("OpenCL: CommandQueue creation failed");
-        return;
-    }
-
-    // 5. 编译内核
-    cl::Program::Sources sources;
-    sources.push_back({raytraceKernelSource, strlen(raytraceKernelSource)});
-    cl::Program program(context, sources, &err);
-    if (err != CL_SUCCESS) {
-        add_info("OpenCL: Program creation failed");
-        return;
-    }
-
-    std::vector<cl::Device> buildDevices = {device};
-    err = program.build(buildDevices);
-    if (err != CL_SUCCESS) {
-        // 获取编译日志
-        std::string log = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-        add_info("OpenCL: Build failed - " + log.substr(0, 100)); // 截取前100字符
-        return;
-    }
-
-	kernel_trace = cl::Kernel(program, "raytrace_kernel", &err);
-//	kernel_trace = cl::Kernel(program, "test_kernel", &err);
-    if (err != CL_SUCCESS) {
-        add_info("OpenCL: Kernel extraction failed");
-        return;
-    }
-
-    available = true;
-    add_info("OpenCL: Initialization successful");
-}
-void GPUAccelerator::uploadWorld(
-    const map<point, long long> (&cube)[10],
-    const map<point, long long>& rot_state,
-    const vector<vector<vector<vector<point>>>>& all_cube_color,
-    const double matrix_T_inv[48][3][3],
-    const vector<vector<special_cube>>& rot_sp_cube,
-    const node& position,
-    long long render_distance)
-{
-    if (!available) return;
-    // 1. 计算网格范围
-    long long R = render_distance + 2;
-    long long cx = (long long)floor(position.x);
-    long long cy = (long long)floor(position.y);
-    long long cz = (long long)floor(position.z);
-    gridSizeX = 2 * R + 1;
-    gridSizeY = 2 * R + 1;
-    gridSizeZ = 2 * R + 1;
-    gridOrigin = node(cx - R, cy - R, cz - R);
-
-    // 2. 构建体素数据
-    vector<int> voxelData(gridSizeX * gridSizeY * gridSizeZ, 0);
-    for (int z = 0; z < gridSizeZ; ++z)
-        for (int y = 0; y < gridSizeY; ++y)
-            for (int x = 0; x < gridSizeX; ++x) {
-                point wp(cx - R + x, cy - R + y, cz - R + z);
-                long long block = 0;
-                auto it = cube[0].find(wp);
-                if (it != cube[0].end()) block = it->second;
-                else block = generate_block(wp); // 可访问，因为在同一文件
-                if (block > 0) {
-                    long long rot = 0;
-                    auto rit = rot_state.find(wp);
-                    if (rit != rot_state.end()) rot = rit->second;
-                    voxelData[z * (gridSizeY * gridSizeX) + y * gridSizeX + x] =
-                        (int)(block & 0xFFFF) | ((int)(rot & 0xFF) << 16);
-                }
-            }
-    d_voxelGrid = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                             sizeof(int) * voxelData.size(), voxelData.data());
-
-    // 3. 上传纹理数据
-	size_t numBlocks = all_cube_color.size() - 1;   // kind_of_cube
-	std::vector<unsigned int> texData;
-	// ---- 关键修复：填充方块0的纹理（6面 × 256像素），防止索引偏移 ----
-	for (int i = 0; i < 6 * 256; ++i) {
-	    texData.push_back(0);   // 全黑，空气不可见
-	}
-	for (size_t id = 1; id <= numBlocks; ++id) {
-	    for (int face = 1; face <= 6; ++face) {
-	        for (int v = 0; v < 16; ++v) {
-	            for (int u = 0; u < 16; ++u) {
-	                point col = all_cube_color[id][face][v][u];
-	                unsigned int c = ((unsigned int)(col.x & 0xFF) << 16) | ((unsigned int)(col.y & 0xFF) << 8) | (unsigned int)(col.z & 0xFF);
-	                texData.push_back(c);
-	            }
-	        }
-	    }
-	}
-	d_textures = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,sizeof(unsigned int) * texData.size(), texData.data());
-
-    // 4. 上传旋转逆矩阵
-    std::vector<float> matData(48 * 9);
-    for (int i = 0; i < 48; ++i) {
-        for (int r = 0; r < 3; ++r) {
-            for (int c = 0; c < 3; ++c) {
-                matData[i * 9 + r * 3 + c] = (float)matrix_T_inv[i][r][c];
-            }
-        }
-    }
-    d_matrices = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                            sizeof(float) * matData.size(), matData.data());
-
-    // 5. 特殊方块几何数据暂未上传，后续可扩展
-}
-void GPUAccelerator::dispatchRender(
-    const node& eye_dir, const node& screen_x_dir, const node& screen_y_dir,
-    const node& eye_act, const node& eye_xydir,
-    double view_a, double view_b, double view_r,
-    bool is_round, long long res_x, long long res_y,
-    long long mirror_times, double mirror_reduction,
-    std::vector<point>& current_frame) {
-    if (!available) return;
-
-    int width = (int)(res_x + 1);
-    int height = (int)(res_y + 1);
-    size_t totalPixels = width * height;
-
-    // 创建输出缓冲区
-    cl::Buffer d_output(context, CL_MEM_WRITE_ONLY, sizeof(unsigned int) * totalPixels);
-
-    // 设置内核参数
-    kernel_trace.setArg(0, d_output);
-    kernel_trace.setArg(1, width);
-    kernel_trace.setArg(2, height);
-    kernel_trace.setArg(3, d_voxelGrid);
-    kernel_trace.setArg(4, gridSizeX);
-    kernel_trace.setArg(5, gridSizeY);
-    kernel_trace.setArg(6, gridSizeZ);
-    kernel_trace.setArg(7, (float)gridOrigin.x);
-    kernel_trace.setArg(8, (float)gridOrigin.y);
-    kernel_trace.setArg(9, (float)gridOrigin.z);
-    kernel_trace.setArg(10, voxelScale);
-    kernel_trace.setArg(11, d_textures);
-    kernel_trace.setArg(12, d_matrices);
-    // 相机参数
-    kernel_trace.setArg(13, (float)position.x);
-    kernel_trace.setArg(14, (float)position.y);
-    kernel_trace.setArg(15, (float)position.z);
-    kernel_trace.setArg(16, (float)eye_dir.x);
-    kernel_trace.setArg(17, (float)eye_dir.y);
-    kernel_trace.setArg(18, (float)eye_dir.z);
-    kernel_trace.setArg(19, (float)screen_x_dir.x);
-    kernel_trace.setArg(20, (float)screen_x_dir.y);
-    kernel_trace.setArg(21, (float)screen_x_dir.z);
-    kernel_trace.setArg(22, (float)screen_y_dir.x);
-    kernel_trace.setArg(23, (float)screen_y_dir.y);
-    kernel_trace.setArg(24, (float)screen_y_dir.z);
-    kernel_trace.setArg(25, (float)screen_x_wid);  // 需要传入全局常量
-    kernel_trace.setArg(26, (float)screen_y_wid);
-    kernel_trace.setArg(27, (int)render_distance * 2); // maxSteps
-    kernel_trace.setArg(28, (int)mirror_times);        // maxBounce
-
-    // 执行内核
-    cl::NDRange global(width, height);
-    queue.enqueueNDRangeKernel(kernel_trace, cl::NullRange, global, cl::NullRange);
-    queue.finish();
-
-    // 读回结果
-    std::vector<unsigned int> gpuOutput(totalPixels);
-    queue.enqueueReadBuffer(d_output, CL_TRUE, 0, sizeof(unsigned int) * totalPixels, gpuOutput.data());
-
-    // 填充 current_frame（注意行翻转：OpenCL 图像原点在左上，原程序可能原点在左下）
-    // 原程序 j 从 resolution_y 向下遍历，current_frame 索引为 (height-1-j)*width + i
-    // 为了保持一致，我们直接按 OpenCL 的原样写入，然后在 optimized_render 中再调整。
-    // 这里采用兼容原程序的索引：j 越大 y 坐标越小（屏幕下方）
-    for (int j = 0; j < height; ++j) {
-        for (int i = 0; i < width; ++i) {
-            // OpenCL 输出 y=0 对应原程序 j=resolution_y（屏幕最上方）
-            int idx = j * width + i;
-            unsigned int col = gpuOutput[idx];
-            int r = (col >> 16) & 0xFF;
-            int g = (col >> 8) & 0xFF;
-            int b = col & 0xFF;
-            // 原程序 current_frame 的存储顺序是 (resolution_y - j) 行最先
-            int targetIdx = (height - 1 - j) * width + i;
-            current_frame[targetIdx] = point(r, g, b);
-        }
-    }
-}
-
-// 全局 GPU 加速器实例
-GPUAccelerator g_gpu;
-#endif
-
-
+//存，读区块(保存、读取世界要调用一些)
+bool is_in_disk(point pos);
+void save_chunk(point pos);
+void load_chunk(point pos);
+void ensure_chunks();
 
 
 
@@ -1568,14 +1004,18 @@ ll generate_voxel(ll lod,point pos){
 		cube[lod][pos]=block_kind;
 		return (block_kind>0);
 	}
-	else{
-		ll sum=0;
-		for(ll i=0;i<VERTEX_NUM;i++){
-			sum+=generate_voxel(lod-1,(pos*2ll)+(point){(i>>2)&1,(i>>1)&1,(i>>0)&1});
+	if(lod==MAX_LOD){
+		if(is_in_disk(pos)){
+			load_chunk(pos);
+			return cube[MAX_LOD][pos];
 		}
-		cube[lod][pos]=sum;
-		return sum;
 	}
+	ll sum=0;
+	for(ll i=0;i<VERTEX_NUM;i++){
+		sum+=generate_voxel(lod-1,(pos*2ll)+(point){(i>>2)&1,(i>>1)&1,(i>>0)&1});
+	}
+	cube[lod][pos]=sum;
+	return sum;
 }
 ll get_block(ll lod,const point&pos){
 	auto it=cube[lod].find(pos);
@@ -1699,9 +1139,9 @@ ll get_nowtime(){//获得当前时间
 	ll nowtime=(ll)(1900+ltm->tm_year)*10000000000ll+(ll)(1+ltm->tm_mon)*100000000ll+(ll)(ltm->tm_mday)*1000000ll+(ll)(ltm->tm_hour)*10000ll+(ll)(ltm->tm_min)*100+(ltm->tm_sec);
 	return nowtime;
 }
-vector<string>getSaveFileNames(){//获得文件夹中文件名 
+vector<string>getFileNames(string folder){//获得文件夹中文件名 
 	vector<string> fileNames;
-	const string folderPath="./saves";
+	const string folderPath=folder.c_str();
 	DIR*dir=opendir(folderPath.c_str());
 	if(dir==NULL)return fileNames;
 	dirent*entry;
@@ -1880,7 +1320,7 @@ void keyboard(){//键盘检测
 		info_time=getTimeOfDayMicros();
 	}
 	else if(key_ch=='j'){
-		vector<string>fileNames=getSaveFileNames();
+		vector<string>fileNames=getFileNames("saves");
 		ll pos=0;
 		bool pgstt=1;
 		displaySaveList(fileNames,pos);
@@ -1940,6 +1380,10 @@ void keyboard(){//键盘检测
 		}
 		force_redraw=true;
 	}
+	else if(key_ch=='\033'){
+		touch_k(get_nowtime());
+		exit(0);
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////初始化函数 
@@ -1993,10 +1437,10 @@ void init_transform_matrices(){
 void over_all_init(){//全体初始化 
 	cout<<"init...";
 	init_transform_matrices();
-	FILE* fp=fopen("./texture/all_world_cube.txt","r");
+	FILE* fp=fopen("texture/all_world_cube.txt","r");
 	if(fp==NULL){
 		info="fail to open all_world_cube.txt";
-		info_time=get_nowtime();
+		info_time=getTimeOfDayMicros();
 	}
 	fscanf(fp,"%lld",&kind_of_cube);
 	
@@ -2020,24 +1464,24 @@ void over_all_init(){//全体初始化
 	for(ll i=1;i<=kind_of_cube;++i){
 		if(idcube[i].empty())continue;
 		if(!is_special[i]){
-			FILE* fp=fopen(("./texture/"+idcube[i]+".txt").c_str(),"r");
+			FILE* fp=fopen(("texture/"+idcube[i]+".txt").c_str(),"r");
 			if(fp==NULL)continue;
 			for(ll j=1;j<=FACE_NUM;++j)for(ll ii=0;ii<TEX_SIZE;++ii)for(ll jj=0;jj<TEX_SIZE;++jj){
-				ll tmp;
+				ll tmp=0;
 				fscanf(fp,"%lld",&tmp);
 				all_cube_color[i][j][ii][jj]=color_ll_to_point(tmp);
 			}
 			fclose(fp);
 		}
 		else{
-			FILE* fp=fopen(("./texture/"+idcube[i]+".txt").c_str(),"r");
+			FILE* fp=fopen(("texture/"+idcube[i]+".txt").c_str(),"r");
 			if(fp==NULL)continue;
 			fscanf(fp,"%lld",&sp_cube[i].cube_face_num);
 			sp_cube[i]._cube_face.resize(sp_cube[i].cube_face_num);
 			for(ll j=0;j<sp_cube[i].cube_face_num;j++){
 				for(ll k=0;k<4;k++)fscanf(fp,"%lf%lf%lf",&sp_cube[i]._cube_face[j].X[k].x,&sp_cube[i]._cube_face[j].X[k].y,&sp_cube[i]._cube_face[j].X[k].z);
 				for(ll ii=0;ii<TEX_SIZE;ii++)for(ll jj=0;jj<TEX_SIZE;jj++){
-					ll tmp;
+					ll tmp=0;
 					fscanf(fp,"%lld",&tmp);
 					sp_cube[i]._cube_face[j].color[ii][jj]=color_ll_to_point(tmp);
 				}
@@ -2074,27 +1518,17 @@ void over_all_init(){//全体初始化
 	EnableVirtualTerminal();
 	prev_screen_color.resize((resolution_x[resolution]+1)*(resolution_y[resolution]+1),-1);
 	current_frame.assign((resolution_x[resolution]+1)*(resolution_y[resolution]+1),0);
-	string path_saves="./saves";
-	string path_images="./images";
-	string path_chunks="./chunks";
+	string path_saves="saves";
+	string path_images="images";
+	string path_chunks="chunks";
 	filesystem::path folderPath=path_chunks.c_str();
 	filesystem::remove_all(folderPath);
 	CreateDirectory(path_saves.c_str(),NULL);
 	CreateDirectory(path_images.c_str(),NULL);
 	CreateDirectory(path_chunks.c_str(),NULL);
 	
-	for(ll i=-7;i<=7;++i)
-		for(ll j=-7;j<=7;++j)
-			for(ll k=-7;k<=7;++k)
-				add_cube({CUBE_SELF,{i,j,k}},rev_idcube["grass"]);
-	for(ll i=-6;i<=6;++i)
-		for(ll j=-6;j<=6;++j)
-			for(ll k=-6;k<=6;++k)
-				add_cube({CUBE_SELF,{i,j,k}},rev_idcube[""]);
-	for(ll i=-1;i<=1;i+=2)
-		for(ll j=-2;j<=2;++j)
-			for(ll k=-2;k<=2;++k)
-				add_cube({CUBE_SELF,{i*6,j,k}},rev_idcube["stone"]);
+	FILE*tmp_fp=fopen("log","w");
+	if(tmp_fp!=nullptr)fclose(tmp_fp);
 	
 	if(!g_hConsoleWnd)g_hConsoleWnd=FindWindowW(L"ConsoleWindowClass",NULL);
 	RECT consoleRect={0};
@@ -2833,7 +2267,7 @@ void add_cube(pair<ll,point>pid,ll put_cube){//对应位置添加方块
 		cube_num+=(point){diff[0],diff[1],diff[2]};
 	}
 
-	if(get_block(0,cube_num)==0){//原来是空气 
+	if(get_block(0,cube_num)==0){//原来是空气,get_block保证生成了
 		if(put_cube==0)return;
 		cube[0][cube_num]=put_cube;//放的方块如果不是空气 
 		for(ll i=1;i<=MAX_LOD;i++){
@@ -2892,6 +2326,18 @@ void delete_cube(pair<ll,point>pid){//删除对应方块
 	}
 	return;
 }
+void delete_lod(ll lod,point pos){
+	if(lod==0){
+		cube[0].erase(pos);
+		rot_state.erase(pos);
+	}
+	else{
+		cube[lod].erase(pos);
+		for(ll i=0;i<VERTEX_NUM;i++){
+			delete_lod(lod-1,(pos*2ll)+(point){(i>>2)&1,(i>>1)&1,(i>>0)&1});
+		}
+	}
+}
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////快捷键函数
 
 void display_shortcut(ll pos){
@@ -2911,6 +2357,9 @@ void display_shortcut(ll pos){
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////通知添加函数
 
 void add_info(string message){
+	FILE*fp=fopen("log","a");
+	fprintf(fp,"%lld %s\n",get_nowtime(),message.c_str());
+	fclose(fp);
 	info=message;
 	info_time=getTimeOfDayMicros();
 }
@@ -2971,26 +2420,6 @@ void calculate_whole(){
 	else current_frame.assign((resolution_x[resolution]+1)*(resolution_y[resolution]+1),0);
 	init();
 	
-	
-	#ifdef USE_OPENCL
-    if (g_gpu.available) {
-        static bool worldChanged = true;
-        if (worldChanged) {
-            g_gpu.uploadWorld(cube, rot_state, all_cube_color,
-                              matrix_T_inv, rot_sp_cube, position,
-                              render_distance);
-            worldChanged = false;
-        }
-        g_gpu.dispatchRender(eye_dir, screen_x_dir, screen_y_dir,
-                             eye_act, eye_xydir,
-                             view_a, view_b, view_r,
-                             is_round, resolution_x[resolution], resolution_y[resolution],
-                             mirror_times, mirror_reduction,
-                             current_frame);
-        image_s = "";  // GPU 暂不生成字符画，可后续补充
-        return;
-    }
-	#endif
 	
 	
 	current_frame.assign((resolution_x[resolution]+1)*(resolution_y[resolution]+1),0);
@@ -3115,61 +2544,132 @@ void touch_c(ll nt){//保存截图
 	}
 	return;
 }
-void touch_k(ll nt){//保存存档 
+void touch_k(ll nt){//保存存档
 	touch_c(nt);
 	string adr="saves/"+to_string(nt)+".txt";
 	FILE *fp=fopen(adr.c_str(),"w");
 	if(fp==NULL)return;
-	map<point,ll>::iterator it;
-	map<point,point>chunk_to_one_air;
-	map<point,point>::iterator it2;
-	ll cubesize=0;
-	it=cube[0].begin();
-	while(it!=cube[0].end()){
-		if(idcube[(*it).second]!="")++cubesize;
+	
+	for(auto chunk:loaded_chunks)save_chunk(chunk);
+	auto chunk_names=getFileNames("chunks");
+	
+	ll chunk_cube_cnt=0;//
+	ll chunk_rot_cnt=0;
+	vector<ll>chunk_cube;//
+	vector<ll>chunk_rot;
+	vector<point>chunk_pos;
+	vector<ll>fp_offset;
+	
+	chunk_names.erase(remove_if(chunk_names.begin(),chunk_names.end(),
+								[](const string&s) {
+									ll x,y,z;
+									ll res=sscanf(s.c_str(),"%lld_%lld_%lld",&x,&y,&z);
+									return res!=3;
+								}),
+								chunk_names.end()
+								);
+	
+	for(const auto& chunk_name:chunk_names){
+		point tmp;
+		sscanf(chunk_name.c_str(),"%lld_%lld_%lld",&tmp.x,&tmp.y,&tmp.z);
+		chunk_pos.push_back(tmp);
+	}
+	
+	//（验），开，（跳），读，记，关
+	//先读第一行，加起来，把读过的指针保存
+	for(ll i=0;i<chunk_names.size();i++){
+		FILE *tmp_fp=fopen(("chunks/"+chunk_names[i]).c_str(),"r");
+		if(tmp_fp==nullptr){
+			fp_offset.push_back(-1);
+			chunk_cube.push_back(-1);
+			add_info("fail to open chunks/"+chunk_names[i]);
+			continue;
+		}
+		ll tmp_cube_num=0;
+		fscanf(tmp_fp,"%lld",&tmp_cube_num);
 		
-		else if(chunk_to_one_air.find(to_point((*it).first*1.0/pow_2[MAX_LOD]))==chunk_to_one_air.end()){
-			cubesize++;
-			chunk_to_one_air[to_point((*it).first*1.0/pow_2[MAX_LOD])]=(*it).first;
+		fp_offset.push_back(ftell(tmp_fp));
+		
+		fclose(tmp_fp);
+		chunk_cube_cnt+=tmp_cube_num;
+		if(tmp_cube_num==0)chunk_cube_cnt++;//空区块也保存一个空气
+		chunk_cube.push_back(tmp_cube_num);
+	}
+	//输出到fp
+	fprintf(fp,"%lld\n",chunk_cube_cnt);
+	//继续读下面的，输出到fp，
+	for(ll i=0;i<chunk_names.size();i++){
+		
+		FILE *tmp_fp=fopen(("chunks/"+chunk_names[i]).c_str(),"r");
+		if(tmp_fp==nullptr||fp_offset[i]==-1||chunk_cube[i]==-1){
+			add_info("fail to open chunks/"+chunk_names[i]);
+			continue;
 		}
-		++it;
-	}
-	fprintf(fp,"%lld\n",cubesize);
-	it=cube[0].begin();
-	while(it!=cube[0].end()){
-		if(idcube[(*it).second]!=""){
-			fprintf(fp,"%lld %lld %lld   ",(*it).first.x,(*it).first.y,(*it).first.z);
-			fprintf(fp,"%s\n",idcube[(*it).second].c_str());
+		fseek(tmp_fp,fp_offset[i],SEEK_SET);
+		
+		for(ll j=0;j<chunk_cube[i];j++){
+			point tmp_pos={0,0,0};
+			ll tmp_cube_kind=0;
+			
+			fscanf(tmp_fp,"%lld%lld%lld%lld",&tmp_pos.x,&tmp_pos.y,&tmp_pos.z,&tmp_cube_kind);
+			
+			tmp_pos=chunk_pos[i]*pow_2[MAX_LOD]+tmp_pos;
+			fprintf(fp,"%lld %lld %lld ",tmp_pos.x,tmp_pos.y,tmp_pos.z);
+			fprintf(fp,"%s\n",idcube[tmp_cube_kind].c_str());
 		}
-		++it;
-	}
-	
-	it2=chunk_to_one_air.begin();
-	while(it2!=chunk_to_one_air.end()){
-		fprintf(fp,"%lld %lld %lld   ",(*it2).second.x,(*it2).second.y,(*it2).second.z);
-		fprintf(fp,"0\n");
-		++it2;
-	}
-	
-	
-	ll rotatesize=0;
-	it=rot_state.begin();
-	while(it!=rot_state.end()){
-		if((*it).second)++rotatesize;
-		++it;
-	}
-	fprintf(fp,"\n%lld\n",rotatesize);
-	it=rot_state.begin();
-	while(it!=rot_state.end()){
-		if((*it).second){
-			fprintf(fp,"%lld %lld %lld   ",(*it).first.x,(*it).first.y,(*it).first.z);
-			fprintf(fp,"%lld\n",(*it).second);
+		fp_offset[i]=ftell(tmp_fp);
+		fclose(tmp_fp);
+		
+		if(chunk_cube[i]==0){//空区块保存
+			point tmp_pos=chunk_pos[i]*pow_2[MAX_LOD];
+			fprintf(fp,"%lld %lld %lld %lld\n",tmp_pos.x,tmp_pos.y,tmp_pos.z,0ll);
 		}
-		++it;
 	}
 	
+	//读取rot
+	for(ll i=0;i<chunk_names.size();i++){
+		FILE *tmp_fp=fopen(("chunks/"+chunk_names[i]).c_str(),"r");
+		if(tmp_fp==nullptr||fp_offset[i]==-1||chunk_cube[i]==-1){
+			chunk_rot.push_back(-1);
+			add_info("fail to open chunks/"+chunk_names[i]);
+			continue;
+		}
+		fseek(tmp_fp,fp_offset[i],SEEK_SET);
+		
+		ll tmp_rot_num=0;
+		fscanf(tmp_fp,"%lld",&tmp_rot_num);
+		
+		fp_offset[i]=ftell(tmp_fp);
+		fclose(tmp_fp);
+		
+		chunk_rot_cnt+=tmp_rot_num;
+		
+		chunk_rot.push_back(tmp_rot_num);
+	}
+	fprintf(fp,"\n%lld\n",chunk_rot_cnt);
+	
+	for(ll i=0;i<chunk_names.size();i++){
+		FILE *tmp_fp=fopen(("chunks/"+chunk_names[i]).c_str(),"r");
+		if(tmp_fp==nullptr||fp_offset[i]==-1||chunk_cube[i]==-1||chunk_rot[i]==-1){
+			add_info("fail to open chunks/"+chunk_names[i]);
+			continue;
+		}
+		fseek(tmp_fp,fp_offset[i],SEEK_SET);
+		for(ll j=0;j<chunk_rot[i];j++){
+			point tmp_pos={0,0,0};
+			ll tmp_rot=0;
+			
+			fscanf(tmp_fp,"%lld%lld%lld%lld",&tmp_pos.x,&tmp_pos.y,&tmp_pos.z,&tmp_rot);
+			tmp_pos=chunk_pos[i]*pow_2[MAX_LOD]+tmp_pos;
+			fprintf(fp,"%lld %lld %lld %lld\n",tmp_pos.x,tmp_pos.y,tmp_pos.z,tmp_rot);
+		}
+		fp_offset[i]=ftell(tmp_fp);
+		fclose(tmp_fp);
+	}
 	fclose(fp);
+	
 	change=0;
+	
 	add_info(to_string(nt)+" save is saved");
 	return;   
 }
@@ -3223,21 +2723,40 @@ void init_chunk(ll lod,point pos){
 }
 void loadSave(const string& filename){//加载存档 
 	FILE*fp=fopen(("saves/"+filename).c_str(),"r");
-	if(fp==NULL)return;
+	if(fp==NULL){
+		add_info("fail to open saves/"+filename);
+		return;
+	}
+	
 	ll cubesize=0;
+	ll rotatesize=0;
+	FILE *now_fp=nullptr;
+	point now_chunk={LLONG_MAX,LLONG_MAX,LLONG_MAX};
+	//数据保存到
+	map<point,pair<ll,ll> >chunk_cube_cnt;//cube_num,rot
+	map<point,string>chunk_adr;
+	
+	
 	fscanf(fp,"%lld",&cubesize);
 	if(cubesize==0){
 		fclose(fp);
+		add_info("fail to load, the save is empty!!!");
 		return; 
 	}
-	for(ll i=0;i<=MAX_LOD;i++)cube[i].clear();
 	
-	map<point,bool>to_init_chunk;
-	//不要写成set，有神秘问题 
+	//清除数据
+	for(ll i=0;i<=MAX_LOD;i++)cube[i].clear();
+	rot_state.clear();
+	filesystem::remove_all("chunks");
+	CreateDirectory("chunks",NULL);
+	loaded_chunks.clear();
+	
+	
 	for(ll i=0;i<cubesize;++i){
-		point cube_num={0,0,0};
+		//正确读取tmp_pos，block_kind
+		point tmp_pos={0,0,0};
 		char cubestyle[CHAR_MAXNUM];
-		fscanf(fp,"%lld %lld %lld",&cube_num.x,&cube_num.y,&cube_num.z);
+		fscanf(fp,"%lld%lld%lld",&tmp_pos.x,&tmp_pos.y,&tmp_pos.z);
 		fscanf(fp,"%s",cubestyle);
 		string style(cubestyle);
 		bool is_number=true;
@@ -3246,54 +2765,243 @@ void loadSave(const string& filename){//加载存档
 		if(is_number)block_kind=stoi(style);
 		else block_kind=rev_idcube[style];
 		
-		cube[0][cube_num]=block_kind;
-		to_init_chunk[to_point(cube_num*1.0/pow_2[MAX_LOD])]=1;
-		
-		for(ll i=1;i<=MAX_LOD;i++){
-			if(block_kind>0)cube[i][to_point(cube_num*1.0/pow_2[i])]++;
-		}
-	}
-	map<point,bool>::iterator it=to_init_chunk.begin();
-	while(it!=to_init_chunk.end()){
-		if((*it).second)init_chunk(MAX_LOD,(*it).first);
-		it++;
+		//先读取每个区块方块个数，正确创建区块键值的前半部分
+		if(block_kind)chunk_cube_cnt[to_point(tmp_pos*1.0/pow_2[MAX_LOD])].first++;
+		else chunk_cube_cnt[to_point(tmp_pos*1.0/pow_2[MAX_LOD])];//是空气创建这个键值
 	}
 	
-	ll rotatesize=0;
 	fscanf(fp,"%lld",&rotatesize);
-	if(rotatesize==0){
-		fclose(fp);
-		return;
-	}
-	rot_state.clear();
+	
 	for(ll i=0;i<rotatesize;++i){
-		point cube_num={0,0,0};
+		point tmp_pos={0,0,0};
 		ll rotatestyle=0;
-		fscanf(fp,"%lld %lld %lld",&cube_num.x,&cube_num.y,&cube_num.z);
+		fscanf(fp,"%lld%lld%lld",&tmp_pos.x,&tmp_pos.y,&tmp_pos.z);
 		fscanf(fp,"%lld",&rotatestyle);
-		if(rotatestyle)rot_state[cube_num]=rotatestyle;
+		if(rotatestyle)chunk_cube_cnt[to_point(tmp_pos*1.0/pow_2[MAX_LOD])].second++;
 	}
 	fclose(fp);
+	
+	
+	for(auto chunk:chunk_cube_cnt){
+		point tmp_pos=chunk.first;
+		string adr="chunks/"+to_string(tmp_pos.x)+"_"+to_string(tmp_pos.y)+"_"+to_string(tmp_pos.z);
+		chunk_adr[tmp_pos]=adr;
+		FILE* tmp_fp=fopen(adr.c_str(),"w");
+		if(tmp_fp==nullptr){
+			add_info("fail to open "+adr);
+			continue;
+		}
+		//输出前半部分第一行，保证全空区块也有文件
+		fprintf(tmp_fp,"%lld\n",chunk.second.first);
+		fclose(tmp_fp);
+	}
+	
+	//重新读前半部分
+	fp=fopen(("saves/"+filename).c_str(),"r");
+	if(fp==nullptr){
+		add_info("fail to open saves/"+filename);
+		return;
+	}
+	fscanf(fp,"%lld",&cubesize);
+	
+	for(ll i=0;i<cubesize;++i){
+		//正确读取tmp_pos，block_kind
+		point tmp_pos={0,0,0};
+		char cubestyle[CHAR_MAXNUM];
+		fscanf(fp,"%lld%lld%lld",&tmp_pos.x,&tmp_pos.y,&tmp_pos.z);
+		fscanf(fp,"%s",cubestyle);
+		string style(cubestyle);
+		bool is_number=true;
+		for(char c:style)if(c<'0'||c>'9'){is_number=false;break;}
+		ll block_kind=0;
+		if(is_number)block_kind=stoi(style);
+		else block_kind=rev_idcube[style];
+		
+		//读取方块，输出非空气
+		if(block_kind){
+			
+			point chunk=to_point(tmp_pos*1.0/pow_2[MAX_LOD]);
+			point r_pos=tmp_pos-(chunk*pow_2[MAX_LOD]);
+			if(chunk!=now_chunk){
+				if(now_fp!=nullptr)fclose(now_fp);
+				now_fp=fopen(chunk_adr[chunk].c_str(),"a");
+				if(now_fp==nullptr){
+					add_info("fail to open "+chunk_adr[chunk]);
+					continue;
+				}
+				now_chunk=chunk;
+			}
+			fprintf(now_fp,"%lld %lld %lld %lld\n",r_pos.x,r_pos.y,r_pos.z,block_kind);
+		}
+	}
+	
+	fclose(now_fp);
+
+	
+	for(auto chunk:chunk_cube_cnt){
+		point tmp_pos=chunk.first;
+		FILE* tmp_fp=fopen(chunk_adr[tmp_pos].c_str(),"a");
+		if(tmp_fp==nullptr){
+			add_info("fail to open "+chunk_adr[tmp_pos]);
+			continue;
+		}
+		//输出后半部分第一行
+		fprintf(tmp_fp,"\n%lld\n",chunk.second.second);
+		fclose(tmp_fp);
+	}
+	
+	//重新读后半部分
+	fscanf(fp,"%lld",&rotatesize);
+	
+	now_fp=nullptr;
+	now_chunk={LLONG_MAX,LLONG_MAX,LLONG_MAX};
+	
+	for(ll i=0;i<rotatesize;++i){
+		point tmp_pos={0,0,0};
+		ll rotatestyle=0;
+		fscanf(fp,"%lld%lld%lld",&tmp_pos.x,&tmp_pos.y,&tmp_pos.z);
+		fscanf(fp,"%lld",&rotatestyle);
+		
+		if(rotatestyle){
+			point chunk=to_point(tmp_pos*1.0/pow_2[MAX_LOD]);
+			point r_pos=tmp_pos-(chunk*pow_2[MAX_LOD]);
+			if(chunk!=now_chunk){
+				if(now_fp!=nullptr)fclose(now_fp);
+				now_fp=fopen(chunk_adr[chunk].c_str(),"a");
+				if(now_fp==nullptr){
+					add_info("fail to open "+chunk_adr[chunk]);
+					continue;
+				}
+				now_chunk=chunk;
+			}
+			fprintf(now_fp,"%lld %lld %lld %lld\n",r_pos.x,r_pos.y,r_pos.z,rotatestyle);
+		}
+	}
+	//关闭文件流
+	fclose(fp);
+	if(now_fp!=nullptr)fclose(now_fp);
+}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////区块操作函数
+bool is_in_disk(point pos){
+	string path="chunks/"+to_string(pos.x)+"_"+to_string(pos.y)+"_"+to_string(pos.z);
+	return filesystem::is_regular_file(path);
+}
+void save_chunk(point pos){
+	string adr="chunks/"+to_string(pos.x)+"_"+to_string(pos.y)+"_"+to_string(pos.z);
+	FILE *fp=fopen(adr.c_str(),"w");
+	if(fp==NULL)return;
+	ll cube_num=0;
+	for(ll i=0;i<pow_2[MAX_LOD];i++){
+		for(ll j=0;j<pow_2[MAX_LOD];j++){
+			for(ll k=0;k<pow_2[MAX_LOD];k++){
+				if(get_block(0,pos*pow_2[MAX_LOD]+(point){i,j,k}))cube_num++;
+			}
+		}
+	}
+	fprintf(fp,"%lld\n",cube_num);
+	for(ll i=0;i<pow_2[MAX_LOD];i++){
+		for(ll j=0;j<pow_2[MAX_LOD];j++){
+			for(ll k=0;k<pow_2[MAX_LOD];k++){
+				if(get_block(0,pos*pow_2[MAX_LOD]+(point){i,j,k}))fprintf(fp,"%lld %lld %lld %lld\n",i,j,k,get_block(0,pos*pow_2[MAX_LOD]+(point){i,j,k}));
+			}
+		}
+	}
+	ll rot_num=0;
+	for(ll i=0;i<pow_2[MAX_LOD];i++){
+		for(ll j=0;j<pow_2[MAX_LOD];j++){
+			for(ll k=0;k<pow_2[MAX_LOD];k++){
+				if(get_rotate(pos*pow_2[MAX_LOD]+(point){i,j,k})>0)rot_num++;
+			}
+		}
+	}
+	fprintf(fp,"\n%lld\n",rot_num);
+	for(ll i=0;i<pow_2[MAX_LOD];i++){
+		for(ll j=0;j<pow_2[MAX_LOD];j++){
+			for(ll k=0;k<pow_2[MAX_LOD];k++){
+				if(get_rotate(pos*pow_2[MAX_LOD]+(point){i,j,k})>0)fprintf(fp,"%lld %lld %lld %lld\n",i,j,k,get_rotate(pos*pow_2[MAX_LOD]+(point){i,j,k}));
+			}
+		}
+	}
+	fclose(fp);
+}
+void load_chunk(point pos){
+	delete_lod(MAX_LOD,pos);
+	string adr="chunks/"+to_string(pos.x)+"_"+to_string(pos.y)+"_"+to_string(pos.z);
+	FILE *fp=fopen(adr.c_str(),"r");
+	if(fp==NULL)return;
+	ll cube_num=0;
+	fscanf(fp,"%lld",&cube_num);
+	while(cube_num--){
+		point r_pos={0,0,0};
+		ll cube_kind=0;
+		fscanf(fp,"%lld %lld %lld %lld",&r_pos.x,&r_pos.y,&r_pos.z,&cube_kind);
+		cube[0][pos*pow_2[MAX_LOD]+r_pos]=cube_kind;
+	}
+	for(ll lod=1;lod<=MAX_LOD;lod++){
+		for(ll ii=0;ii<pow_2[MAX_LOD-lod];ii++){
+			for(ll jj=0;jj<pow_2[MAX_LOD-lod];jj++){
+				for(ll kk=0;kk<pow_2[MAX_LOD-lod];kk++){
+					for(ll i=0;i<=1;i++){
+						for(ll j=0;j<=1;j++){
+							for(ll k=0;k<=1;k++){
+								if(cube[lod-1][pos*pow_2[MAX_LOD-lod+1]+(point){ii,jj,kk}*2ll+(point){i,j,k}])cube[lod][pos*pow_2[MAX_LOD-lod]+(point){ii,jj,kk}]+=(lod==1)?(1):(cube[lod-1][pos*pow_2[MAX_LOD-lod+1]+(point){ii,jj,kk}*2ll+(point){i,j,k}]);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	ll rot_num=0;
+	fscanf(fp,"%lld",&rot_num);
+	while(rot_num--){
+		point r_pos={0,0,0};
+		ll rot=0;
+		fscanf(fp,"%lld %lld %lld %lld",&r_pos.x,&r_pos.y,&r_pos.z,&rot);
+		rot_state[pos*pow_2[MAX_LOD]+r_pos]=rot;
+	}
+	fclose(fp);
+}
+void ensure_chunks(){
+	point player_chunk=to_point(position/pow_2[MAX_LOD]);
+	if(player_chunk==last_player_chunk)return;
+	last_player_chunk=player_chunk;
+	
+	set<point>desired;
+	for(ll i=-3;i<=3;++i){
+		for(ll j=-3;j<=3;++j){
+			for(ll k=-3;k<=3;++k){
+				desired.insert(player_chunk+(point){i,j,k});
+			}
+		}
+	}
+	for(auto it=loaded_chunks.begin();it!=loaded_chunks.end();){
+		if(!desired.count(*it)){
+			save_chunk(*it);
+			delete_lod(MAX_LOD,*it);
+			it=loaded_chunks.erase(it);
+		}
+		else ++it;
+	}
+	for(const point&chunk:desired){
+		if(loaded_chunks.count(chunk))continue;
+		generate_voxel(MAX_LOD,chunk);
+		loaded_chunks.insert(chunk);
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////主函数 
 
 signed main(){
 	over_all_init();
-	
-	#ifdef USE_OPENCL
-	g_gpu.init();                         // 初始化 GPU
-	if (g_gpu.available) {
-	    add_info("OpenCL GPU available");
-	}else {
-	    add_info("OpenCL GPU NOT available, falling back to CPU");
-	}
-	#endif
+
 	
 	while(1){
 		if(getTimeOfDayMicros()-info_time>INFO_TIMEOUT)info="";
 		HideCursor();
 		ll start_time=getTimeOfDayMicros();
+		ensure_chunks();
 		calculate_whole();
 		optimized_render();
 		ll end_time=getTimeOfDayMicros();
