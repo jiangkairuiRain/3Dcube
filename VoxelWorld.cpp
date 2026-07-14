@@ -2750,7 +2750,7 @@ void loadSave(const string& filename){//加载存档
 	filesystem::remove_all("chunks");
 	CreateDirectory("chunks",NULL);
 	loaded_chunks.clear();
-	
+	last_player_chunk={LLONG_MAX,LLONG_MAX,LLONG_MAX};
 	
 	for(ll i=0;i<cubesize;++i){
 		//正确读取tmp_pos，block_kind
@@ -2835,7 +2835,7 @@ void loadSave(const string& filename){//加载存档
 		}
 	}
 	
-	fclose(now_fp);
+	if(now_fp!=nullptr)fclose(now_fp);
 
 	
 	for(auto chunk:chunk_cube_cnt){
@@ -2880,6 +2880,8 @@ void loadSave(const string& filename){//加载存档
 	//关闭文件流
 	fclose(fp);
 	if(now_fp!=nullptr)fclose(now_fp);
+	
+	change=0;//虽然没有用，因为loadsave的上一步是touch_k
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////区块操作函数
 bool is_in_disk(point pos){
